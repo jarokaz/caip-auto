@@ -1,0 +1,148 @@
+{
+  "feature_columns": {
+    "col_00": {
+      "statistics": {
+        "mean": 2959.187397926874, 
+        "variance": 78214.48822115344
+      }, 
+      "type": "numerical"
+    }, 
+    "col_01": {
+      "statistics": {
+        "mean": 155.70926240709264, 
+        "variance": 12506.317470076727
+      }, 
+      "type": "numerical"
+    }, 
+    "col_02": {
+      "statistics": {
+        "mean": 14.098756790987569, 
+        "variance": 55.68667223159083
+      }, 
+      "type": "numerical"
+    }, 
+    "col_03": {
+      "statistics": {
+        "mean": 268.70911242209115, 
+        "variance": 45210.61910769649
+      }, 
+      "type": "numerical"
+    }, 
+    "col_04": {
+      "statistics": {
+        "mean": 46.04476219044762, 
+        "variance": 3299.0124784394043
+      }, 
+      "type": "numerical"
+    }, 
+    "col_05": {
+      "statistics": {
+        "mean": 2359.650134986501, 
+        "variance": 2446637.369201465
+      }, 
+      "type": "numerical"
+    }, 
+    "col_06": {
+      "statistics": {
+        "mean": 212.19309735693096, 
+        "variance": 720.1811112561494
+      }, 
+      "type": "numerical"
+    }, 
+    "col_07": {
+      "statistics": {
+        "mean": 223.31888477818885, 
+        "variance": 386.2605306186044
+      }, 
+      "type": "numerical"
+    }, 
+    "col_08": {
+      "statistics": {
+        "mean": 142.46933639969336, 
+        "variance": 1459.4826610944995
+      }, 
+      "type": "numerical"
+    }, 
+    "col_09": {
+      "statistics": {
+        "mean": 1983.0177482251775, 
+        "variance": 1768614.4811948696
+      }, 
+      "type": "numerical"
+    }, 
+    "col_10": {
+      "mapping": {
+        "Cache": 0, 
+        "Commanche": 1, 
+        "Neota": 2, 
+        "Rawah": 3
+      }, 
+      "mode": "Rawah", 
+      "num_category": 4, 
+      "treatment": "vocabulary", 
+      "type": "categorical"
+    }, 
+    "col_11": {
+      "mapping": {
+        "C2702": 0, 
+        "C2703": 1, 
+        "C2704": 2, 
+        "C2705": 3, 
+        "C2706": 4, 
+        "C2717": 5, 
+        "C3501": 6, 
+        "C3502": 7, 
+        "C4201": 8, 
+        "C4703": 9, 
+        "C4704": 10, 
+        "C4744": 11, 
+        "C4758": 12, 
+        "C5101": 13, 
+        "C5151": 14, 
+        "C6101": 15, 
+        "C6102": 16, 
+        "C6731": 17, 
+        "C7101": 18, 
+        "C7102": 19, 
+        "C7103": 20, 
+        "C7201": 21, 
+        "C7202": 22, 
+        "C7700": 23, 
+        "C7701": 24, 
+        "C7702": 25, 
+        "C7709": 26, 
+        "C7710": 27, 
+        "C7745": 28, 
+        "C7746": 29, 
+        "C7755": 30, 
+        "C7756": 31, 
+        "C7757": 32, 
+        "C7790": 33, 
+        "C8703": 34, 
+        "C8707": 35, 
+        "C8708": 36, 
+        "C8771": 37, 
+        "C8772": 38, 
+        "C8776": 39
+      }, 
+      "mode": "C7745", 
+      "num_category": 40, 
+      "treatment": "vocabulary", 
+      "type": "categorical"
+    }
+  }, 
+  "target_algorithm": "XGboost", 
+  "target_column": {
+    "mapping": {
+      "0": "0", 
+      "1": "1", 
+      "2": "2", 
+      "3": "3", 
+      "4": "4", 
+      "5": "5", 
+      "6": "6"
+    }, 
+    "num_category": 7, 
+    "type": "classification"
+  }
+}
