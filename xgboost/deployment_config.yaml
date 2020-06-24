@@ -1,7 +1,7 @@
-deploymentUri: gs://mlops-dev-workspace/xgboost-demo/jobs/job_20200624_020523/trial_6/model
+deploymentUri: gs://mlops-dev-workspace/xgboost-demo/jobs/job_20200624_160326/trial_9/model
 framework: XGBOOST
 labels:
-  job_id: job_20200624_020523
+  job_id: job_20200624_160326
   merror_percent: '13'
 runtimeVersion: '1.14'
 pythonVersion: '2.7'
