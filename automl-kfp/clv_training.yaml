@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: clv-training-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T13:58:45.236658',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T16:00:57.952583',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "CLV Training Pipeline
       using BigQuery for feature engineering and Automl Tables for model training",
       "inputs": [{"name": "project_id", "type": "String"}, {"default": "WITH\n  order_summaries
