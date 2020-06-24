@@ -1,7 +1,0 @@
-deploymentUri: gs://mlops-dev-workspace/xgboos-demo/jobs/JOB_20200623_044020/trial_7/model
-framework: XGBOOST
-labels:
-  job_id: JOB_20200623_044020
-  merror_percent: '13'
-runtimeVersion: '1.14'
-pythonVersion: '2.7'

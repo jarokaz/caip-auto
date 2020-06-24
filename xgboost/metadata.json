@@ -2,71 +2,71 @@
   "feature_columns": {
     "col_00": {
       "statistics": {
-        "mean": 2959.187397926874, 
-        "variance": 78214.48822115344
+        "mean": 2959.588707795887, 
+        "variance": 78411.05966683447
       }, 
       "type": "numerical"
     }, 
     "col_01": {
       "statistics": {
-        "mean": 155.70926240709264, 
-        "variance": 12506.317470076727
+        "mean": 155.97818551478184, 
+        "variance": 12529.650036577597
       }, 
       "type": "numerical"
     }, 
     "col_02": {
       "statistics": {
-        "mean": 14.098756790987569, 
-        "variance": 55.68667223159083
+        "mean": 14.0668599806686, 
+        "variance": 55.96979847941934
       }, 
       "type": "numerical"
     }, 
     "col_03": {
       "statistics": {
-        "mean": 268.70911242209115, 
-        "variance": 45210.61910769649
+        "mean": 268.6619171416192, 
+        "variance": 45042.06379990087
       }, 
       "type": "numerical"
     }, 
     "col_04": {
       "statistics": {
-        "mean": 46.04476219044762, 
-        "variance": 3299.0124784394043
+        "mean": 46.253074692530745, 
+        "variance": 3328.380248441284
       }, 
       "type": "numerical"
     }, 
     "col_05": {
       "statistics": {
-        "mean": 2359.650134986501, 
-        "variance": 2446637.369201465
+        "mean": 2355.6665333466653, 
+        "variance": 2437699.0256034047
       }, 
       "type": "numerical"
     }, 
     "col_06": {
       "statistics": {
-        "mean": 212.19309735693096, 
-        "variance": 720.1811112561494
+        "mean": 212.1364696863647, 
+        "variance": 717.0762344760997
       }, 
       "type": "numerical"
     }, 
     "col_07": {
       "statistics": {
-        "mean": 223.31888477818885, 
-        "variance": 386.2605306186044
+        "mean": 223.35534779855348, 
+        "variance": 389.76775133557936
       }, 
       "type": "numerical"
     }, 
     "col_08": {
       "statistics": {
-        "mean": 142.46933639969336, 
-        "variance": 1459.4826610944995
+        "mean": 142.5888577808886, 
+        "variance": 1455.98562970273
       }, 
       "type": "numerical"
     }, 
     "col_09": {
       "statistics": {
-        "mean": 1983.0177482251775, 
-        "variance": 1768614.4811948696
+        "mean": 1974.2788554477886, 
+        "variance": 1747310.0538440426
       }, 
       "type": "numerical"
     }, 

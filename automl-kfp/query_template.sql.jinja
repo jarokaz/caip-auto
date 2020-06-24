@@ -1,0 +1,118 @@
+WITH
+  order_summaries as (
+    SELECT
+      a.customer_id,
+      a.order_date,
+      a.order_value,
+      a.order_qty_articles
+    FROM
+    (
+      SELECT
+        customer_id,
+        order_date,
+        ROUND(SUM(unit_price * quantity), 2) AS order_value,
+        SUM(quantity) AS order_qty_articles,
+        (
+          SELECT
+            MAX(order_date)
+          FROM
+            `{{ data_source_id }}` tl
+          WHERE
+            tl.customer_id = t.customer_id
+        ) latest_order
+      FROM
+        `{{ data_source_id }}` t
+      GROUP BY
+          customer_id,
+          order_date
+    ) a
+
+    INNER JOIN (
+      -- Only customers with more than one positive order values before threshold.
+      SELECT
+        customer_id
+      FROM (
+        -- Customers and how many positive order values  before threshold.
+        SELECT
+          customer_id,
+          SUM(positive_value) cnt_positive_value
+        FROM (
+          -- Customer with whether order was positive or not at each date.
+          SELECT
+            customer_id,
+            (
+              CASE
+                WHEN SUM(unit_price * quantity) > 0 THEN 1
+                ELSE 0
+              END ) positive_value
+          FROM
+            `{{ data_source_id }}`
+          WHERE
+            order_date < DATE("{{ threshold_date }}")
+          GROUP BY
+            customer_id,
+            order_date)
+        GROUP BY
+          customer_id )
+      WHERE
+        cnt_positive_value > 1
+      ) b
+    ON
+      a.customer_id = b.customer_id
+    --[START common_clean]
+    WHERE
+      -- Bought in the past 3 months
+      DATE_DIFF(DATE("{{ predict_end }}"), latest_order, DAY) <= 90
+      -- Make sure returns are consistent.
+      AND (
+        (order_qty_articles > 0 and order_Value > 0) OR
+        (order_qty_articles < 0 and order_Value < 0)
+      ))
+          
+SELECT
+--  tf.customer_id,
+  ROUND(tf.monetary, 2) as monetary,
+  tf.cnt_orders AS frequency,
+  tf.recency,
+  tf.T,
+  ROUND(tf.recency/cnt_orders, 2) AS time_between,
+  ROUND(tf.avg_basket_value, 2) AS avg_basket_value,
+  ROUND(tf.avg_basket_size, 2) AS avg_basket_size,
+  tf.cnt_returns,
+  -- Target calculated for overall period
+  ROUND(tt.target_monetary, 2) as target_monetary
+FROM
+  -- This SELECT uses only data before threshold to make features.
+  (
+    SELECT
+      customer_id,
+      SUM(order_value) AS monetary,
+      DATE_DIFF(MAX(order_date), MIN(order_date), DAY) AS recency,
+      DATE_DIFF(DATE('{{ threshold_date }}'), MIN(order_date), DAY) AS T,
+      COUNT(DISTINCT order_date) AS cnt_orders,
+      AVG(order_qty_articles) avg_basket_size,
+      AVG(order_value) avg_basket_value,
+      SUM(CASE
+          WHEN order_value < 1 THEN 1
+          ELSE 0 END) AS cnt_returns
+    FROM
+      order_summaries a
+    WHERE
+      order_date <= DATE('{{ threshold_date }}')
+    GROUP BY
+      customer_id) tf,
+
+  -- This SELECT uses data after threshold to calculate the target )
+  (
+    SELECT
+      customer_id,
+      SUM(order_value) target_monetary
+    FROM
+      order_summaries
+      WHERE order_date > DATE('{{ threshold_date }}')
+    GROUP BY
+      customer_id) tt
+WHERE
+  tf.customer_id = tt.customer_id
+  AND tf.monetary > 0
+  AND tf.monetary <= {{ max_monetary }}
