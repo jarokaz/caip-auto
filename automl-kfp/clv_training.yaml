@@ -1,0 +1,237 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: clv-training-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T04:02:44.900793',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "CLV Training Pipeline
+      using BigQuery for feature engineering and Automl Tables for model training",
+      "inputs": [{"name": "project_id", "type": "String"}, {"default": "WITH\n  order_summaries
+      as (\n    SELECT\n      a.customer_id,\n      a.order_date,\n      a.order_value,\n      a.order_qty_articles\n    FROM\n    (\n      SELECT\n        customer_id,\n        order_date,\n        ROUND(SUM(unit_price
+      * quantity), 2) AS order_value,\n        SUM(quantity) AS order_qty_articles,\n        (\n          SELECT\n            MAX(order_date)\n          FROM\n            `mlops-dev-env.clv.transactions`
+      tl\n          WHERE\n            tl.customer_id = t.customer_id\n        ) latest_order\n      FROM\n        `mlops-dev-env.clv.transactions`
+      t\n      GROUP BY\n          customer_id,\n          order_date\n    ) a\n\n    INNER
+      JOIN (\n      -- Only customers with more than one positive order values before
+      threshold.\n      SELECT\n        customer_id\n      FROM (\n        -- Customers
+      and how many positive order values  before threshold.\n        SELECT\n          customer_id,\n          SUM(positive_value)
+      cnt_positive_value\n        FROM (\n          -- Customer with whether order
+      was positive or not at each date.\n          SELECT\n            customer_id,\n            (\n              CASE\n                WHEN
+      SUM(unit_price * quantity) > 0 THEN 1\n                ELSE 0\n              END
+      ) positive_value\n          FROM\n            `mlops-dev-env.clv.transactions`\n          WHERE\n            order_date
+      < DATE(\"2011-08-08\")\n          GROUP BY\n            customer_id,\n            order_date)\n        GROUP
+      BY\n          customer_id )\n      WHERE\n        cnt_positive_value > 1\n      )
+      b\n    ON\n      a.customer_id = b.customer_id\n    --[START common_clean]\n    WHERE\n      --
+      Bought in the past 3 months\n      DATE_DIFF(DATE(\"2011-12-12\"), latest_order,
+      DAY) <= 90\n      -- Make sure returns are consistent.\n      AND (\n        (order_qty_articles
+      > 0 and order_Value > 0) OR\n        (order_qty_articles < 0 and order_Value
+      < 0)\n      ))\n          \nSELECT\n--  tf.customer_id,\n  ROUND(tf.monetary,
+      2) as monetary,\n  tf.cnt_orders AS frequency,\n  tf.recency,\n  tf.T,\n  ROUND(tf.recency/cnt_orders,
+      2) AS time_between,\n  ROUND(tf.avg_basket_value, 2) AS avg_basket_value,\n  ROUND(tf.avg_basket_size,
+      2) AS avg_basket_size,\n  tf.cnt_returns,\n  -- Target calculated for overall
+      period\n  ROUND(tt.target_monetary, 2) as target_monetary\nFROM\n  -- This SELECT
+      uses only data before threshold to make features.\n  (\n    SELECT\n      customer_id,\n      SUM(order_value)
+      AS monetary,\n      DATE_DIFF(MAX(order_date), MIN(order_date), DAY) AS recency,\n      DATE_DIFF(DATE(''2011-08-08''),
+      MIN(order_date), DAY) AS T,\n      COUNT(DISTINCT order_date) AS cnt_orders,\n      AVG(order_qty_articles)
+      avg_basket_size,\n      AVG(order_value) avg_basket_value,\n      SUM(CASE\n          WHEN
+      order_value < 1 THEN 1\n          ELSE 0 END) AS cnt_returns\n    FROM\n      order_summaries
+      a\n    WHERE\n      order_date <= DATE(''2011-08-08'')\n    GROUP BY\n      customer_id)
+      tf,\n\n  -- This SELECT uses data after threshold to calculate the target )\n  (\n    SELECT\n      customer_id,\n      SUM(order_value)
+      target_monetary\n    FROM\n      order_summaries\n      WHERE order_date > DATE(''2011-08-08'')\n    GROUP
+      BY\n      customer_id) tt\nWHERE\n  tf.customer_id = tt.customer_id\n  AND tf.monetary
+      > 0\n  AND tf.monetary <= 15000", "name": "feature_engineering_query", "optional":
+      true, "type": "String"}, {"default": "us-central1", "name": "aml_compute_region",
+      "optional": true, "type": "String"}, {"default": "features", "name": "features_table_id",
+      "optional": true, "type": "String"}, {"default": "clv", "name": "features_dataset_id",
+      "optional": true, "type": "String"}, {"default": "US", "name": "features_dataset_location",
+      "optional": true, "type": "String"}, {"default": "clv_features", "name": "aml_dataset_name",
+      "optional": true, "type": "String"}, {"default": "target_monetary", "name":
+      "target_column_name", "optional": true, "type": "String"}, {"default": "clv_regression",
+      "name": "aml_model_name", "optional": true, "type": "String"}, {"default": "1000",
+      "name": "train_budget", "optional": true, "type": "Integer"}, {"default": "MINIMIZE_MAE",
+      "name": "optimization_objective", "optional": true, "type": "String"}, {"default":
+      "mean_absolute_error", "name": "primary_metric", "optional": true, "type": "String"},
+      {"default": "900", "name": "deployment_threshold", "optional": true, "type":
+      "Float"}], "name": "CLV Training"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1}
+spec:
+  entrypoint: clv-training
+  templates:
+  - name: automl-create-dataset
+    container:
+      args: [--project-id, '{{inputs.parameters.project_id}}', --region, '{{inputs.parameters.aml_compute_region}}',
+        --display-name, '{{inputs.parameters.aml_dataset_name}}', '----output-paths',
+        /tmp/outputs/dataset_path/data]
+      command:
+      - python3
+      - -u
+      - -c
+      - "def automl_create_dataset(project_id , region, display_name):  \n      \n\
+        \n    import logging\n    from google.cloud import automl_v1beta1 as automl\n\
+        \n    logging.basicConfig(level=logging.INFO)\n    client = automl.TablesClient(project=project_id,\
+        \ region=region)\n\n    dataset = client.create_dataset(\n        dataset_display_name=display_name\n\
+        \    )\n\n    return (dataset.name)\n\ndef _serialize_str(str_value: str)\
+        \ -> str:\n    if not isinstance(str_value, str):\n        raise TypeError('Value\
+        \ \"{}\" has type \"{}\" instead of str.'.format(str(str_value), str(type(str_value))))\n\
+        \    return str_value\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Automl\
+        \ create dataset', description='')\n_parser.add_argument(\"--project-id\"\
+        , dest=\"project_id\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--region\", dest=\"region\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--display-name\", dest=\"\
+        display_name\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        ----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args\
+        \ = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\"\
+        , [])\n\n_outputs = automl_create_dataset(**_parsed_args)\n\n_output_serializers\
+        \ = [\n    _serialize_str,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n\
+        \    try:\n        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n\
+        \        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
+      image: gcr.io/mlops-dev-env/clv_components:latest
+    inputs:
+      parameters:
+      - {name: aml_compute_region}
+      - {name: aml_dataset_name}
+      - {name: project_id}
+    outputs:
+      artifacts:
+      - {name: automl-create-dataset-dataset_path, path: /tmp/outputs/dataset_path/data}
+    metadata:
+      labels: {pipelines.kubeflow.org/pipeline-sdk-type: kfp}
+      annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "project_id",
+          "type": "String"}, {"name": "region", "type": "String"}, {"name": "display_name",
+          "type": "String"}], "name": "Automl create dataset", "outputs": [{"name":
+          "dataset_path", "type": "String"}]}'}
+  - name: bigquery-query
+    container:
+      args: [--ui_metadata_path, /tmp/outputs/MLPipeline_UI_metadata/data, kfp_component.google.bigquery,
+        query, --query, '{{inputs.parameters.feature_engineering_query}}', --project_id,
+        '{{inputs.parameters.project_id}}', --dataset_id, '{{inputs.parameters.features_dataset_id}}',
+        --table_id, '{{inputs.parameters.features_table_id}}', --dataset_location,
+        US, --output_gcs_path, '', --job_config, '']
+      command: []
+      env:
+      - {name: KFP_POD_NAME, value: '{{pod.name}}'}
+      - name: KFP_POD_NAME
+        valueFrom:
+          fieldRef: {fieldPath: metadata.name}
+      - name: KFP_NAMESPACE
+        valueFrom:
+          fieldRef: {fieldPath: metadata.namespace}
+      image: gcr.io/ml-pipeline/ml-pipeline-gcp:ad9bd5648dd0453005225779f25d8cebebc7ca00
+    inputs:
+      parameters:
+      - {name: feature_engineering_query}
+      - {name: features_dataset_id}
+      - {name: features_table_id}
+      - {name: project_id}
+    outputs:
+      artifacts:
+      - {name: mlpipeline-ui-metadata, path: /tmp/outputs/MLPipeline_UI_metadata/data}
+      - {name: bigquery-query-output_gcs_path, path: /tmp/kfp/output/bigquery/query-output-path.txt}
+    metadata:
+      labels:
+        add-pod-env: "true"
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "A Kubeflow
+          Pipeline component to submit a query to Google Cloud Bigquery \nservice
+          and dump outputs to a Google Cloud Storage blob. \n", "inputs": [{"description":
+          "The query used by Bigquery service to fetch the results.", "name": "query",
+          "type": "String"}, {"description": "The project to execute the query job.",
+          "name": "project_id", "type": "GCPProjectID"}, {"default": "", "description":
+          "The ID of the persistent dataset to keep the results of the query.", "name":
+          "dataset_id", "type": "String"}, {"default": "", "description": "The ID
+          of the table to keep the results of the query. If absent, the operation
+          will generate a random id for the table.", "name": "table_id", "type": "String"},
+          {"default": "", "description": "The path to the Cloud Storage bucket to
+          store the query output.", "name": "output_gcs_path", "type": "GCSPath"},
+          {"default": "US", "description": "The location to create the dataset. Defaults
+          to `US`.", "name": "dataset_location", "type": "String"}, {"default": "",
+          "description": "The full config spec for the query job.See  [QueryJobConfig](https://googleapis.github.io/google-cloud-python/latest/bigquery/generated/google.cloud.bigquery.job.QueryJobConfig.html#google.cloud.bigquery.job.QueryJobConfig)  for
+          details.", "name": "job_config", "type": "Dict"}], "metadata": {"labels":
+          {"add-pod-env": "true"}}, "name": "Bigquery - Query", "outputs": [{"description":
+          "The path to the Cloud Storage bucket containing the query output in CSV
+          format.", "name": "output_gcs_path", "type": "GCSPath"}, {"name": "MLPipeline
+          UI metadata", "type": "UI metadata"}]}'}
+  - name: clv-training
+    inputs:
+      parameters:
+      - {name: aml_compute_region}
+      - {name: aml_dataset_name}
+      - {name: feature_engineering_query}
+      - {name: features_dataset_id}
+      - {name: features_table_id}
+      - {name: project_id}
+    dag:
+      tasks:
+      - name: automl-create-dataset
+        template: automl-create-dataset
+        arguments:
+          parameters:
+          - {name: aml_compute_region, value: '{{inputs.parameters.aml_compute_region}}'}
+          - {name: aml_dataset_name, value: '{{inputs.parameters.aml_dataset_name}}'}
+          - {name: project_id, value: '{{inputs.parameters.project_id}}'}
+      - name: bigquery-query
+        template: bigquery-query
+        arguments:
+          parameters:
+          - {name: feature_engineering_query, value: '{{inputs.parameters.feature_engineering_query}}'}
+          - {name: features_dataset_id, value: '{{inputs.parameters.features_dataset_id}}'}
+          - {name: features_table_id, value: '{{inputs.parameters.features_table_id}}'}
+          - {name: project_id, value: '{{inputs.parameters.project_id}}'}
+  arguments:
+    parameters:
+    - {name: project_id}
+    - name: feature_engineering_query
+      value: "WITH\n  order_summaries as (\n    SELECT\n      a.customer_id,\n   \
+        \   a.order_date,\n      a.order_value,\n      a.order_qty_articles\n    FROM\n\
+        \    (\n      SELECT\n        customer_id,\n        order_date,\n        ROUND(SUM(unit_price\
+        \ * quantity), 2) AS order_value,\n        SUM(quantity) AS order_qty_articles,\n\
+        \        (\n          SELECT\n            MAX(order_date)\n          FROM\n\
+        \            `mlops-dev-env.clv.transactions` tl\n          WHERE\n      \
+        \      tl.customer_id = t.customer_id\n        ) latest_order\n      FROM\n\
+        \        `mlops-dev-env.clv.transactions` t\n      GROUP BY\n          customer_id,\n\
+        \          order_date\n    ) a\n\n    INNER JOIN (\n      -- Only customers\
+        \ with more than one positive order values before threshold.\n      SELECT\n\
+        \        customer_id\n      FROM (\n        -- Customers and how many positive\
+        \ order values  before threshold.\n        SELECT\n          customer_id,\n\
+        \          SUM(positive_value) cnt_positive_value\n        FROM (\n      \
+        \    -- Customer with whether order was positive or not at each date.\n  \
+        \        SELECT\n            customer_id,\n            (\n              CASE\n\
+        \                WHEN SUM(unit_price * quantity) > 0 THEN 1\n            \
+        \    ELSE 0\n              END ) positive_value\n          FROM\n        \
+        \    `mlops-dev-env.clv.transactions`\n          WHERE\n            order_date\
+        \ < DATE(\"2011-08-08\")\n          GROUP BY\n            customer_id,\n \
+        \           order_date)\n        GROUP BY\n          customer_id )\n     \
+        \ WHERE\n        cnt_positive_value > 1\n      ) b\n    ON\n      a.customer_id\
+        \ = b.customer_id\n    --[START common_clean]\n    WHERE\n      -- Bought\
+        \ in the past 3 months\n      DATE_DIFF(DATE(\"2011-12-12\"), latest_order,\
+        \ DAY) <= 90\n      -- Make sure returns are consistent.\n      AND (\n  \
+        \      (order_qty_articles > 0 and order_Value > 0) OR\n        (order_qty_articles\
+        \ < 0 and order_Value < 0)\n      ))\n          \nSELECT\n--  tf.customer_id,\n\
+        \  ROUND(tf.monetary, 2) as monetary,\n  tf.cnt_orders AS frequency,\n  tf.recency,\n\
+        \  tf.T,\n  ROUND(tf.recency/cnt_orders, 2) AS time_between,\n  ROUND(tf.avg_basket_value,\
+        \ 2) AS avg_basket_value,\n  ROUND(tf.avg_basket_size, 2) AS avg_basket_size,\n\
+        \  tf.cnt_returns,\n  -- Target calculated for overall period\n  ROUND(tt.target_monetary,\
+        \ 2) as target_monetary\nFROM\n  -- This SELECT uses only data before threshold\
+        \ to make features.\n  (\n    SELECT\n      customer_id,\n      SUM(order_value)\
+        \ AS monetary,\n      DATE_DIFF(MAX(order_date), MIN(order_date), DAY) AS\
+        \ recency,\n      DATE_DIFF(DATE('2011-08-08'), MIN(order_date), DAY) AS T,\n\
+        \      COUNT(DISTINCT order_date) AS cnt_orders,\n      AVG(order_qty_articles)\
+        \ avg_basket_size,\n      AVG(order_value) avg_basket_value,\n      SUM(CASE\n\
+        \          WHEN order_value < 1 THEN 1\n          ELSE 0 END) AS cnt_returns\n\
+        \    FROM\n      order_summaries a\n    WHERE\n      order_date <= DATE('2011-08-08')\n\
+        \    GROUP BY\n      customer_id) tf,\n\n  -- This SELECT uses data after\
+        \ threshold to calculate the target )\n  (\n    SELECT\n      customer_id,\n\
+        \      SUM(order_value) target_monetary\n    FROM\n      order_summaries\n\
+        \      WHERE order_date > DATE('2011-08-08')\n    GROUP BY\n      customer_id)\
+        \ tt\nWHERE\n  tf.customer_id = tt.customer_id\n  AND tf.monetary > 0\n  AND\
+        \ tf.monetary <= 15000"
+    - {name: aml_compute_region, value: us-central1}
+    - {name: features_table_id, value: features}
+    - {name: features_dataset_id, value: clv}
+    - {name: features_dataset_location, value: US}
+    - {name: aml_dataset_name, value: clv_features}
+    - {name: target_column_name, value: target_monetary}
+    - {name: aml_model_name, value: clv_regression}
+    - {name: train_budget, value: '1000'}
+    - {name: optimization_objective, value: MINIMIZE_MAE}
+    - {name: primary_metric, value: mean_absolute_error}
+    - {name: deployment_threshold, value: '900'}
+  serviceAccountName: pipeline-runner
