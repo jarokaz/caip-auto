@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: clv-training-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T04:55:05.530687',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T05:34:42.524111',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "CLV Training Pipeline
       using BigQuery for feature engineering and Automl Tables for model training",
       "inputs": [{"name": "project_id", "type": "String"}, {"default": "WITH\n  order_summaries
@@ -129,6 +129,61 @@ spec:
           "type": "String"}, {"name": "region", "type": "String"}, {"name": "display_name",
           "type": "String"}], "name": "Automl create dataset", "outputs": [{"name":
           "Output", "type": "String"}]}', pipelines.kubeflow.org/max_cache_staleness: P0D}
+  - name: automl-create-model
+    container:
+      args: [--display-name, '{{inputs.parameters.aml_model_name}}', --dataset-name,
+        '{{inputs.parameters.automl-set-target-column-output}}', --optimization-objective,
+        '{{inputs.parameters.optimization_objective}}', --train-budget-milli-node-hours,
+        '{{inputs.parameters.train_budget}}', '----output-paths', /tmp/outputs/Output/data]
+      command:
+      - python3
+      - -u
+      - -c
+      - "def automl_create_model(\n    #    gcp_project_id=project_id,\n    #    gcp_region=aml_compute_region,\n\
+        \        display_name ,\n        dataset_name ,\n        optimization_objective\
+        \ ,\n        train_budget_milli_node_hours \n    )  :\n\n    import logging\n\
+        \    from google.cloud import automl_v1beta1 as automl\n\n    logging.basicConfig(level=logging.INFO)\n\
+        \    client = automl.TablesClient()\n\n    create_model_response = client.create_model(\n\
+        \        model_display_name=display_name,\n        dataset_name=dataset_name,\n\
+        \        train_budget_milli_node_hours=train_budget_milli_node_hours,\n  \
+        \      optimization_objective=optimization_objective\n    )\n    logging.info('Create\
+        \ model operation started: {}'.format(create_model_response.operation))\n\
+        \    logging.info('Create model operation completed: {}'.format(create_model_response.result()))\n\
+        \n    return model.name\n\ndef _serialize_str(str_value: str) -> str:\n  \
+        \  if not isinstance(str_value, str):\n        raise TypeError('Value \"{}\"\
+        \ has type \"{}\" instead of str.'.format(str(str_value), str(type(str_value))))\n\
+        \    return str_value\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Automl\
+        \ create model', description='')\n_parser.add_argument(\"--display-name\"\
+        , dest=\"display_name\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--dataset-name\", dest=\"dataset_name\", type=str,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--optimization-objective\"\
+        , dest=\"optimization_objective\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--train-budget-milli-node-hours\", dest=\"train_budget_milli_node_hours\"\
+        , type=int, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        ----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args\
+        \ = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\"\
+        , [])\n\n_outputs = automl_create_model(**_parsed_args)\n\n_outputs = [_outputs]\n\
+        \n_output_serializers = [\n    _serialize_str,\n\n]\n\nimport os\nfor idx,\
+        \ output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n\
+        \    except OSError:\n        pass\n    with open(output_file, 'w') as f:\n\
+        \        f.write(_output_serializers[idx](_outputs[idx]))\n"
+      image: gcr.io/mlops-dev-env/clv_components:latest
+    inputs:
+      parameters:
+      - {name: aml_model_name}
+      - {name: automl-set-target-column-output}
+      - {name: optimization_objective}
+      - {name: train_budget}
+    outputs:
+      artifacts:
+      - {name: automl-create-model-output, path: /tmp/outputs/Output/data}
+    metadata:
+      labels: {pipelines.kubeflow.org/pipeline-sdk-type: kfp}
+      annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "display_name",
+          "type": "String"}, {"name": "dataset_name", "type": "String"}, {"name":
+          "optimization_objective", "type": "String"}, {"name": "train_budget_milli_node_hours",
+          "type": "Integer"}], "name": "Automl create model", "outputs": [{"name":
+          "Output", "type": "String"}]}'}
   - name: automl-import-data-from-bq
     container:
       args: [--dataset-name, '{{inputs.parameters.automl-create-dataset-output}}',
@@ -146,8 +201,6 @@ spec:
 
             logging.basicConfig(level=logging.INFO)
             client = automl.TablesClient()
-
-            logging.info('dataset_name {}'.format(dataset_name))
 
             import_data_response = client.import_data(
                 dataset_name = dataset_name,
@@ -196,6 +249,9 @@ spec:
       - {name: features_table_id}
       - {name: project_id}
     outputs:
+      parameters:
+      - name: automl-import-data-from-bq-output
+        valueFrom: {path: /tmp/outputs/Output/data}
       artifacts:
       - {name: automl-import-data-from-bq-output, path: /tmp/outputs/Output/data}
     metadata:
@@ -203,6 +259,79 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "dataset_name",
           "type": "String"}, {"name": "table_uri", "type": "String"}], "name": "Automl
           import data from bq", "outputs": [{"name": "Output", "type": "String"}]}'}
+  - name: automl-set-target-column
+    container:
+      args: [--dataset-name, '{{inputs.parameters.automl-import-data-from-bq-output}}',
+        --target-column-name, '{{inputs.parameters.target_column_name}}', '----output-paths',
+        /tmp/outputs/Output/data]
+      command:
+      - python3
+      - -u
+      - -c
+      - |
+        def automl_set_target_column(dataset_name, target_column_name)  :
+
+            import logging
+            from google.cloud import automl_v1beta1 as automl
+
+            logging.basicConfig(level=logging.INFO)
+            client = automl.TablesClient()
+
+            logging.info('Setting target column to: {}'.format(target_column_name))
+
+            import_data_response = client.set_target_column(
+                dataset_name = dataset_name,
+                column_spec_display_name = target_column_name
+            )
+
+            return dataset_name
+
+        def _serialize_str(str_value: str) -> str:
+            if not isinstance(str_value, str):
+                raise TypeError('Value "{}" has type "{}" instead of str.'.format(str(str_value), str(type(str_value))))
+            return str_value
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Automl set target column', description='')
+        _parser.add_argument("--dataset-name", dest="dataset_name", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--target-column-name", dest="target_column_name", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
+        _parsed_args = vars(_parser.parse_args())
+        _output_files = _parsed_args.pop("_output_paths", [])
+
+        _outputs = automl_set_target_column(**_parsed_args)
+
+        _outputs = [_outputs]
+
+        _output_serializers = [
+            _serialize_str,
+
+        ]
+
+        import os
+        for idx, output_file in enumerate(_output_files):
+            try:
+                os.makedirs(os.path.dirname(output_file))
+            except OSError:
+                pass
+            with open(output_file, 'w') as f:
+                f.write(_output_serializers[idx](_outputs[idx]))
+      image: gcr.io/mlops-dev-env/clv_components:latest
+    inputs:
+      parameters:
+      - {name: automl-import-data-from-bq-output}
+      - {name: target_column_name}
+    outputs:
+      parameters:
+      - name: automl-set-target-column-output
+        valueFrom: {path: /tmp/outputs/Output/data}
+      artifacts:
+      - {name: automl-set-target-column-output, path: /tmp/outputs/Output/data}
+    metadata:
+      labels: {pipelines.kubeflow.org/pipeline-sdk-type: kfp}
+      annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "dataset_name",
+          "type": "String"}, {"name": "target_column_name", "type": "String"}], "name":
+          "Automl set target column", "outputs": [{"name": "Output", "type": "String"}]}'}
   - name: bigquery-query
     container:
       args: [--ui_metadata_path, /tmp/outputs/MLPipeline_UI_metadata/data, kfp_component.google.bigquery,
@@ -259,10 +388,14 @@ spec:
       parameters:
       - {name: aml_compute_region}
       - {name: aml_dataset_name}
+      - {name: aml_model_name}
       - {name: feature_engineering_query}
       - {name: features_dataset_id}
       - {name: features_table_id}
+      - {name: optimization_objective}
       - {name: project_id}
+      - {name: target_column_name}
+      - {name: train_budget}
     dag:
       tasks:
       - name: automl-create-dataset
@@ -272,6 +405,15 @@ spec:
           - {name: aml_compute_region, value: '{{inputs.parameters.aml_compute_region}}'}
           - {name: aml_dataset_name, value: '{{inputs.parameters.aml_dataset_name}}'}
           - {name: project_id, value: '{{inputs.parameters.project_id}}'}
+      - name: automl-create-model
+        template: automl-create-model
+        dependencies: [automl-set-target-column]
+        arguments:
+          parameters:
+          - {name: aml_model_name, value: '{{inputs.parameters.aml_model_name}}'}
+          - {name: automl-set-target-column-output, value: '{{tasks.automl-set-target-column.outputs.parameters.automl-set-target-column-output}}'}
+          - {name: optimization_objective, value: '{{inputs.parameters.optimization_objective}}'}
+          - {name: train_budget, value: '{{inputs.parameters.train_budget}}'}
       - name: automl-import-data-from-bq
         template: automl-import-data-from-bq
         dependencies: [automl-create-dataset, bigquery-query]
@@ -281,6 +423,13 @@ spec:
           - {name: features_dataset_id, value: '{{inputs.parameters.features_dataset_id}}'}
           - {name: features_table_id, value: '{{inputs.parameters.features_table_id}}'}
           - {name: project_id, value: '{{inputs.parameters.project_id}}'}
+      - name: automl-set-target-column
+        template: automl-set-target-column
+        dependencies: [automl-import-data-from-bq]
+        arguments:
+          parameters:
+          - {name: automl-import-data-from-bq-output, value: '{{tasks.automl-import-data-from-bq.outputs.parameters.automl-import-data-from-bq-output}}'}
+          - {name: target_column_name, value: '{{inputs.parameters.target_column_name}}'}
       - name: bigquery-query
         template: bigquery-query
         arguments:
