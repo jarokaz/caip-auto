@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: clv-training-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-06-24T16:00:57.952583',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 0.5.1, pipelines.kubeflow.org/pipeline_compilation_time: '2020-07-07T15:42:18.787457',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "CLV Training Pipeline
       using BigQuery for feature engineering and Automl Tables for model training",
       "inputs": [{"name": "project_id", "type": "String"}, {"default": "WITH\n  order_summaries
@@ -132,7 +132,7 @@ spec:
   - name: automl-create-model
     container:
       args: [--project-id, '{{inputs.parameters.project_id}}', --region, '{{inputs.parameters.aml_compute_region}}',
-        --display-name, '{{inputs.parameters.aml_model_name}}', --dataset-name, '{{inputs.parameters.automl-set-target-column-output}}',
+        --display-name, '{{inputs.parameters.aml_model_name}}', --dataset-name, '{{inputs.parameters.automl-import-data-from-bq-output}}',
         --optimization-objective, '{{inputs.parameters.optimization_objective}}',
         --train-budget-milli-node-hours, '{{inputs.parameters.train_budget}}', '----output-paths',
         /tmp/outputs/Output/data]
@@ -177,7 +177,7 @@ spec:
       parameters:
       - {name: aml_compute_region}
       - {name: aml_model_name}
-      - {name: automl-set-target-column-output}
+      - {name: automl-import-data-from-bq-output}
       - {name: optimization_objective}
       - {name: project_id}
       - {name: train_budget}
@@ -253,13 +253,14 @@ spec:
     container:
       args: [--dataset-name, '{{inputs.parameters.automl-create-dataset-output}}',
         --table-uri, 'bq://{{inputs.parameters.project_id}}.{{inputs.parameters.features_dataset_id}}.{{inputs.parameters.features_table_id}}',
-        '----output-paths', /tmp/outputs/Output/data]
+        --target-column-name, '{{inputs.parameters.target_column_name}}', '----output-paths',
+        /tmp/outputs/Output/data]
       command:
       - python3
       - -u
       - -c
       - |
-        def automl_import_data_from_bq(dataset_name, table_uri)  :
+        def automl_import_data_from_bq(dataset_name, table_uri, target_column_name)  :
 
             import logging
             from google.cloud import automl_v1beta1 as automl
@@ -274,6 +275,13 @@ spec:
             logging.info('Import operation started: {}'.format(import_data_response.operation))
             logging.info('Import operation completed: {}'.format(import_data_response.result()))
 
+            import_data_response = client.set_target_column(
+                dataset_name = dataset_name,
+                column_spec_display_name = target_column_name
+            )
+
+            logging.info('Set target column to: {}'.format(target_column_name))
+
             return dataset_name
 
         def _serialize_str(str_value: str) -> str:
@@ -285,6 +293,7 @@ spec:
         _parser = argparse.ArgumentParser(prog='Automl import data from bq', description='')
         _parser.add_argument("--dataset-name", dest="dataset_name", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--table-uri", dest="table_uri", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--target-column-name", dest="target_column_name", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
         _parsed_args = vars(_parser.parse_args())
         _output_files = _parsed_args.pop("_output_paths", [])
@@ -313,6 +322,7 @@ spec:
       - {name: features_dataset_id}
       - {name: features_table_id}
       - {name: project_id}
+      - {name: target_column_name}
     outputs:
       parameters:
       - name: automl-import-data-from-bq-output
@@ -322,8 +332,9 @@ spec:
     metadata:
       labels: {pipelines.kubeflow.org/pipeline-sdk-type: kfp}
       annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "dataset_name",
-          "type": "String"}, {"name": "table_uri", "type": "String"}], "name": "Automl
-          import data from bq", "outputs": [{"name": "Output", "type": "String"}]}'}
+          "type": "String"}, {"name": "table_uri", "type": "String"}, {"name": "target_column_name",
+          "type": "String"}], "name": "Automl import data from bq", "outputs": [{"name":
+          "Output", "type": "String"}]}'}
   - name: automl-log-regression-metrics
     container:
       args: [--model-path, '{{inputs.parameters.automl-create-model-output}}', --primary-metric,
@@ -381,79 +392,6 @@ spec:
           "type": "String"}, {"name": "primary_metric", "type": "String"}], "name":
           "Automl log regression metrics", "outputs": [{"name": "primary_metric",
           "type": "String"}, {"name": "primary_metric_value", "type": "Float"}]}'}
-  - name: automl-set-target-column
-    container:
-      args: [--dataset-name, '{{inputs.parameters.automl-import-data-from-bq-output}}',
-        --target-column-name, '{{inputs.parameters.target_column_name}}', '----output-paths',
-        /tmp/outputs/Output/data]
-      command:
-      - python3
-      - -u
-      - -c
-      - |
-        def automl_set_target_column(dataset_name, target_column_name)  :
-
-            import logging
-            from google.cloud import automl_v1beta1 as automl
-
-            logging.basicConfig(level=logging.INFO)
-            client = automl.TablesClient()
-
-            logging.info('Setting target column to: {}'.format(target_column_name))
-
-            import_data_response = client.set_target_column(
-                dataset_name = dataset_name,
-                column_spec_display_name = target_column_name
-            )
-
-            return dataset_name
-
-        def _serialize_str(str_value: str) -> str:
-            if not isinstance(str_value, str):
-                raise TypeError('Value "{}" has type "{}" instead of str.'.format(str(str_value), str(type(str_value))))
-            return str_value
-
-        import argparse
-        _parser = argparse.ArgumentParser(prog='Automl set target column', description='')
-        _parser.add_argument("--dataset-name", dest="dataset_name", type=str, required=True, default=argparse.SUPPRESS)
-        _parser.add_argument("--target-column-name", dest="target_column_name", type=str, required=True, default=argparse.SUPPRESS)
-        _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
-        _parsed_args = vars(_parser.parse_args())
-        _output_files = _parsed_args.pop("_output_paths", [])
-
-        _outputs = automl_set_target_column(**_parsed_args)
-
-        _outputs = [_outputs]
-
-        _output_serializers = [
-            _serialize_str,
-
-        ]
-
-        import os
-        for idx, output_file in enumerate(_output_files):
-            try:
-                os.makedirs(os.path.dirname(output_file))
-            except OSError:
-                pass
-            with open(output_file, 'w') as f:
-                f.write(_output_serializers[idx](_outputs[idx]))
-      image: gcr.io/mlops-dev-env/clv_components:latest
-    inputs:
-      parameters:
-      - {name: automl-import-data-from-bq-output}
-      - {name: target_column_name}
-    outputs:
-      parameters:
-      - name: automl-set-target-column-output
-        valueFrom: {path: /tmp/outputs/Output/data}
-      artifacts:
-      - {name: automl-set-target-column-output, path: /tmp/outputs/Output/data}
-    metadata:
-      labels: {pipelines.kubeflow.org/pipeline-sdk-type: kfp}
-      annotations: {pipelines.kubeflow.org/component_spec: '{"inputs": [{"name": "dataset_name",
-          "type": "String"}, {"name": "target_column_name", "type": "String"}], "name":
-          "Automl set target column", "outputs": [{"name": "Output", "type": "String"}]}'}
   - name: bigquery-query
     container:
       args: [--ui_metadata_path, /tmp/outputs/MLPipeline_UI_metadata/data, kfp_component.google.bigquery,
@@ -531,12 +469,12 @@ spec:
           - {name: project_id, value: '{{inputs.parameters.project_id}}'}
       - name: automl-create-model
         template: automl-create-model
-        dependencies: [automl-set-target-column]
+        dependencies: [automl-import-data-from-bq]
         arguments:
           parameters:
           - {name: aml_compute_region, value: '{{inputs.parameters.aml_compute_region}}'}
           - {name: aml_model_name, value: '{{inputs.parameters.aml_model_name}}'}
-          - {name: automl-set-target-column-output, value: '{{tasks.automl-set-target-column.outputs.parameters.automl-set-target-column-output}}'}
+          - {name: automl-import-data-from-bq-output, value: '{{tasks.automl-import-data-from-bq.outputs.parameters.automl-import-data-from-bq-output}}'}
           - {name: optimization_objective, value: '{{inputs.parameters.optimization_objective}}'}
           - {name: project_id, value: '{{inputs.parameters.project_id}}'}
           - {name: train_budget, value: '{{inputs.parameters.train_budget}}'}
@@ -549,6 +487,7 @@ spec:
           - {name: features_dataset_id, value: '{{inputs.parameters.features_dataset_id}}'}
           - {name: features_table_id, value: '{{inputs.parameters.features_table_id}}'}
           - {name: project_id, value: '{{inputs.parameters.project_id}}'}
+          - {name: target_column_name, value: '{{inputs.parameters.target_column_name}}'}
       - name: automl-log-regression-metrics
         template: automl-log-regression-metrics
         dependencies: [automl-create-model]
@@ -556,13 +495,6 @@ spec:
           parameters:
           - {name: automl-create-model-output, value: '{{tasks.automl-create-model.outputs.parameters.automl-create-model-output}}'}
           - {name: primary_metric, value: '{{inputs.parameters.primary_metric}}'}
-      - name: automl-set-target-column
-        template: automl-set-target-column
-        dependencies: [automl-import-data-from-bq]
-        arguments:
-          parameters:
-          - {name: automl-import-data-from-bq-output, value: '{{tasks.automl-import-data-from-bq.outputs.parameters.automl-import-data-from-bq-output}}'}
-          - {name: target_column_name, value: '{{inputs.parameters.target_column_name}}'}
       - name: bigquery-query
         template: bigquery-query
         arguments:
